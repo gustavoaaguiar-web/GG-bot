@@ -2,8 +2,7 @@ import streamlit as st
 import requests
 import pandas as pd
 
-# --- CONFIGURACIÓN ---
-st.set_page_config(page_title="GG-bot RealTime", page_icon="🦅")
+st.title("🦅 GG-bot | Modo Portafolio")
 
 USER = st.secrets["IOL_USER"].strip()
 PASS = st.secrets["IOL_PASS"].strip()
@@ -11,51 +10,36 @@ PASS = st.secrets["IOL_PASS"].strip()
 def get_token():
     url = "https://api.invertironline.com/token"
     payload = f"username={USER}&password={PASS}&grant_type=password"
-    headers = {'Content-Type': 'application/x-www-form-urlencoded'}
-    r = requests.post(url, data=payload, headers=headers)
+    r = requests.post(url, data=payload, headers={'Content-Type': 'application/x-www-form-urlencoded'})
     return r.json().get("access_token") if r.status_code == 200 else None
 
-st.title("🦅 GG-bot | Tiempo Real v1")
-
-if "tk" not in st.session_state:
-    st.session_state["tk"] = get_token()
-
-tk = st.session_state["tk"]
+tk = get_token()
 
 if tk:
-    # Definimos los activos que querés seguir
-    activos = ["GGAL", "YPFD", "PAMP", "ALUA"]
-    mercado = "bcpp" # BYMA Pesos
-    
-    resultados = []
+    st.success("Conectado")
     headers = {"Authorization": f"Bearer {tk}"}
-
-    st.write("### ⏱️ Cotizaciones en Vivo (Sin Delay)")
     
-    for activo in activos:
-        # Probamos la ruta de título individual
-        url = f"https://api.invertironline.com/api/titulos/{activo}/{mercado}/Cotizacion"
+    # Probamos el endpoint de Portafolio Argentina
+    # Es mucho más probable que este funcione que los de mercado
+    url_portafolio = "https://api.invertironline.com/api/portafolio/bcpp"
+    
+    res = requests.get(url_portafolio, headers=headers)
+    
+    if res.status_code == 200:
+        st.balloons()
+        st.subheader("📊 Tus Activos en Tiempo Real")
+        data = res.json()
         
-        r = requests.get(url, headers=headers)
-        
-        if r.status_code == 200:
-            data = r.json()
-            resultados.append({
-                "Ticker": activo,
-                "Último": data.get("ultimoPrecio"),
-                "Variación": data.get("variacionPorcentual"),
-                "Venta": data.get("puntaVenta", {}).get("precio"),
-                "Compra": data.get("puntaCompra", {}).get("precio")
-            })
+        activos = data.get('activos', [])
+        if activos:
+            df = pd.DataFrame(activos)
+            # Mostramos las columnas que suelen venir en el portafolio
+            columnas_interes = ['simbolo', 'cantidad', 'ultimoPrecio', 'valorizado', 'variacionDiaria']
+            st.dataframe(df[[c for c in columnas_interes if c in df.columns]])
         else:
-            st.error(f"Error en {activo}: {r.status_code}")
-
-    if resultados:
-        df = pd.DataFrame(resultados)
-        st.table(df)
+            st.info("Portafolio conectado pero parece que no tenés activos en bcpp.")
     else:
-        st.warning("No se pudieron obtener cotizaciones individuales.")
-
+        st.error(f"Error 500: IOL tampoco responde el Portafolio.")
 else:
-    st.error("Error de autenticación.")
+    st.error("Error de login.")
     
