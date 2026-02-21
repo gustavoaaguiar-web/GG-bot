@@ -1,45 +1,29 @@
 import streamlit as st
-import requests
+from merval import merval # Importamos la librería específica
 import pandas as pd
 
-st.title("🦅 GG-bot | Modo Portafolio")
+st.set_page_config(page_title="GG-bot | Merval Lib Test", page_icon="🦅")
 
-USER = st.secrets["IOL_USER"].strip()
-PASS = st.secrets["IOL_PASS"].strip()
+st.title("🦅 GG-bot: Test de Biblioteca 'Merval'")
+st.write("Probando obtención de datos por fuera de la API v1 de IOL...")
 
-def get_token():
-    url = "https://api.invertironline.com/token"
-    payload = f"username={USER}&password={PASS}&grant_type=password"
-    r = requests.post(url, data=payload, headers={'Content-Type': 'application/x-www-form-urlencoded'})
-    return r.json().get("access_token") if r.status_code == 200 else None
+if st.button("🚀 Consultar Panel Merval"):
+    try:
+        with st.spinner("Obteniendo datos..."):
+            # La función get_panel() de esta librería suele traer el panel líder
+            df = merval.get_panel() 
+            
+            if not df.empty:
+                st.success("¡Datos obtenidos con éxito!")
+                # Filtramos las columnas más importantes para no saturar
+                cols = ['especie', 'ultimo', 'variacion', 'compra', 'venta', 'volumen']
+                st.dataframe(df[df.columns.intersection(cols)])
+            else:
+                st.warning("La librería no devolvió datos. Es posible que la fuente esté caída.")
+                
+    except Exception as e:
+        st.error(f"Error al usar la biblioteca: {e}")
+        st.info("Nota: Algunas librerías locales requieren que el mercado esté abierto o fallan si la web de origen cambió su estructura.")
 
-tk = get_token()
-
-if tk:
-    st.success("Conectado")
-    headers = {"Authorization": f"Bearer {tk}"}
-    
-    # Probamos el endpoint de Portafolio Argentina
-    # Es mucho más probable que este funcione que los de mercado
-    url_portafolio = "https://api.invertironline.com/api/portafolio/bcpp"
-    
-    res = requests.get(url_portafolio, headers=headers)
-    
-    if res.status_code == 200:
-        st.balloons()
-        st.subheader("📊 Tus Activos en Tiempo Real")
-        data = res.json()
-        
-        activos = data.get('activos', [])
-        if activos:
-            df = pd.DataFrame(activos)
-            # Mostramos las columnas que suelen venir en el portafolio
-            columnas_interes = ['simbolo', 'cantidad', 'ultimoPrecio', 'valorizado', 'variacionDiaria']
-            st.dataframe(df[[c for c in columnas_interes if c in df.columns]])
-        else:
-            st.info("Portafolio conectado pero parece que no tenés activos en bcpp.")
-    else:
-        st.error(f"Error 500: IOL tampoco responde el Portafolio.")
-else:
-    st.error("Error de login.")
-    
+st.divider()
+st.caption("Esta biblioteca busca datos públicos de Bolsar/BYMA/Rava dependiendo de su versión.")
