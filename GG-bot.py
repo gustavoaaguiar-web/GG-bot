@@ -1,9 +1,9 @@
 import streamlit as st
 import requests
-import pandas as pd
 
-st.set_page_config(page_title="GG-bot Market Test", page_icon="🦅")
+st.title("🦅 GG-bot: Buscador de Ruta Correcta")
 
+# Configuración base
 USER = st.secrets["IOL_USER"].strip()
 PASS = st.secrets["IOL_PASS"].strip()
 
@@ -14,43 +14,44 @@ def get_token():
     r = requests.post(url, data=payload, headers=headers)
     return r.json().get("access_token") if r.status_code == 200 else None
 
-st.title("🦅 GG-bot | Prueba de Mercado")
+if "tk" not in st.session_state:
+    st.session_state["tk"] = get_token()
 
-if "token_simple" not in st.session_state:
-    st.session_state["token_simple"] = get_token()
-
-tk = st.session_state.get("token_simple")
+tk = st.session_state["tk"]
 
 if tk:
-    st.success("Conectado")
+    st.success("Conexión Establecida")
     
-    # Intentamos 3 rutas diferentes para ver cuál tiene habilitada tu cuenta
-    st.subheader("Buscando Datos de GGAL...")
-    
-    # Opción A: Título individual (Ruta clásica v1)
-    # Formato: /api/titulos/{simbolo}/{mercado}
-    # mercados posibles: bcpp (BYMA Pesos), bcba (Viejo Buenos Aires)
-    rutas_a_testear = [
-        "titulos/GGAL/bcpp",
-        "Cotizacion/Acciones/Merval/Argentina",
-        "Cotizacion/Paneles/Merval/bcpp"
+    # Lista de combinaciones posibles para el panel Merval
+    # Probamos variaciones de 'Merval' y de 'bcpp' (mercado local)
+    variaciones = [
+        "Cotizacion/Paneles/Merval/bcpp",     # Estándar
+        "Cotizacion/Paneles/merval/bcpp",     # Minúscula
+        "Cotizacion/Paneles/MERVAL/BCPP",     # Todo Mayúscula
+        "Cotizacion/Paneles/Merval/Argentina",# Por país
+        "Cotizacion/Acciones/Merval/bcpp",    # Usando 'Acciones' en vez de 'Paneles'
+        "Cotizacion/Acciones/Lideres/bcpp",   # Variante 'Lideres'
+        "titulos/GGAL/bcpp",                 # Directo a un papel
+        "titulos/GGAL/BCPP"                  # Directo con mercado en mayúscula
     ]
     
     headers = {"Authorization": f"Bearer {tk}"}
     
-    for ruta in rutas_a_testear:
-        with st.expander(f"Probando ruta: {ruta}"):
-            res = requests.get(f"https://api.invertironline.com/api/{ruta}", headers=headers)
-            if res.status_code == 200:
-                data = res.json()
-                st.write("✅ ¡ÉXITO! Datos recibidos:")
-                st.json(data)
+    st.write("### 🔍 Escaneando disponibilidad...")
+    
+    for ruta in variaciones:
+        url = f"https://api.invertironline.com/api/{ruta}"
+        try:
+            r = requests.get(url, headers=headers, timeout=5)
+            if r.status_code == 200:
+                st.success(f"✅ FUNCIONA: {ruta}")
+                st.json(r.json()[:1]) # Mostramos solo el primer elemento para confirmar
+            elif r.status_code == 500:
+                st.warning(f"⚠️ Error 500 en: {ruta} (Ruta existente pero el servidor falló)")
             else:
-                st.write(f"❌ Falló (Error {res.status_code})")
+                st.error(f"❌ Error {r.status_code} en: {ruta}")
+        except Exception as e:
+            st.write(f"Error de red en {ruta}: {e}")
 
 else:
-    st.error("No hay token. Revisá la clave.")
-    if st.button("Reintentar Login"):
-        st.session_state.clear()
-        st.rerun()
-        
+    st.error("No se pudo obtener el token. Revisá tus credenciales.")
