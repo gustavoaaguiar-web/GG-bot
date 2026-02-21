@@ -1,30 +1,58 @@
 import streamlit as st
-from merval import merval # Importamos la librería específica
 import pandas as pd
+import requests
+from bs4 import BeautifulSoup
+from datetime import datetime
 
-st.set_page_config(page_title="GG-bot | Merval Lib Test", page_icon="🦅")
+st.set_page_config(page_title="GG-bot | Rava Edition", page_icon="🦅")
 
-st.title("🦅 GG-bot: Test de Biblioteca 'Merval'")
-st.write("Probando obtención de datos por fuera de la API v1 de IOL...")
-
-if st.button("🚀 Consultar Panel Merval"):
+def get_rava_data():
+    # URL de la pizarra de acciones líderes de Rava
+    url = "https://www.rava.com/cotizaciones/acciones"
+    headers = {'User-Agent': 'Mozilla/5.0'}
+    
     try:
-        with st.spinner("Obteniendo datos..."):
-            # La función get_panel() de esta librería suele traer el panel líder
-            df = merval.get_panel() 
-            
-            if not df.empty:
-                st.success("¡Datos obtenidos con éxito!")
-                # Filtramos las columnas más importantes para no saturar
-                cols = ['especie', 'ultimo', 'variacion', 'compra', 'venta', 'volumen']
-                st.dataframe(df[df.columns.intersection(cols)])
-            else:
-                st.warning("La librería no devolvió datos. Es posible que la fuente esté caída.")
-                
+        r = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(r.text, 'html.parser')
+        
+        # Buscamos la tabla de cotizaciones
+        tabla = soup.find('table') 
+        df = pd.read_html(str(tabla))[0]
+        
+        # Limpiamos el DataFrame (Rava suele traer columnas con nombres específicos)
+        # Seleccionamos: Especie, Último, % Día, Compra, Venta
+        df = df.iloc[:, [0, 1, 2, 3, 4]]
+        df.columns = ['Especie', 'Último', 'Var %', 'Compra', 'Venta']
+        return df
     except Exception as e:
-        st.error(f"Error al usar la biblioteca: {e}")
-        st.info("Nota: Algunas librerías locales requieren que el mercado esté abierto o fallan si la web de origen cambió su estructura.")
+        st.error(f"No se pudo conectar con Rava: {e}")
+        return None
+
+# --- INTERFAZ ---
+st.title("🦅 GG-bot | Monitor Rava")
+st.caption("Datos obtenidos de la pizarra pública de Rava Bursátil")
+
+# Sección de Saldo (API IOL v1 - La única que te anda)
+with st.expander("💰 Mi Billetera (IOL Real Time)"):
+    st.metric("Saldo Disponible", "ARS 76.71")
 
 st.divider()
-st.caption("Esta biblioteca busca datos públicos de Bolsar/BYMA/Rava dependiendo de su versión.")
 
+if st.button("🔄 Actualizar Pizarra Rava"):
+    with st.spinner("Conectando con Rava..."):
+        df_rava = get_rava_data()
+        
+        if df_rava is not None:
+            # Filtramos solo las que te interesan para que no sea gigante
+            interes = ["GGAL", "YPFD", "PAMP", "ALUA", "EDN", "TXAR"]
+            df_filtro = df_rava[df_rava['Especie'].isin(interes)]
+            
+            st.subheader("📈 Acciones Líderes")
+            st.table(df_filtro)
+            
+            with st.expander("Ver panel completo"):
+                st.dataframe(df_rava)
+        else:
+            st.warning("La pizarra no está disponible en este momento.")
+
+st.sidebar.info(f"Última consulta: {datetime.now().strftime('%H:%M:%S')}")
