@@ -2,36 +2,34 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 
-# Configuración de página para móviles
 st.set_page_config(page_title="GG-bot | Control", page_icon="🦅", layout="centered")
 
-# --- ESTILOS PERSONALIZADOS ---
+# --- ESTILOS PARA EL SALDO Y COLORES ---
 st.markdown("""
     <style>
-    .stMetric { background-color: #f0f2f6; padding: 10px; border-radius: 10px; }
-    .css-1r6slb0 { border: 1px solid #e6e9ef; }
+    .saldo-box {
+        background-color: #1E1E1E;
+        padding: 20px;
+        border-radius: 10px;
+        border-left: 5px solid #FFD700;
+        margin-bottom: 20px;
+    }
+    .val-pos { color: #00FF00; font-weight: bold; }
+    .val-neg { color: #FF4B4B; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- ENCABEZADO Y SALDO ---
-st.title("🦅 GG-bot | Monitor Intradiario")
-col1, col2 = st.columns(2)
-with col1:
-    st.metric("Saldo IOL (ARS)", "$ 76.71")
-with col2:
-    st.caption("⚠️ API IOL en mantenimiento. Precios vía Yahoo Finance (Real Time).")
+# --- SECCIÓN DE SALDO ---
+st.markdown('<div class="saldo-box"><h3 style="margin:0; color:white;">💰 Saldo Disponible IOL</h3><h1 style="margin:0; color:#FFD700;">ARS 76.71</h1></div>', unsafe_allow_html=True)
+st.caption("⚠️ API IOL en mantenimiento. Mostrando último saldo conocido.")
 
 st.divider()
 
-# --- LÓGICA DE DATOS ---
-# Tickers argentinos para Yahoo Finance
+# --- LÓGICA DE PRECIOS (FILTRADA) ---
 TICKERS = {
     "GGAL": "GGAL.BA",
     "YPFD": "YPFD.BA",
-    "PAMP": "PAMP.BA",
-    "ALUA": "ALUA.BA",
-    "TXAR": "TXAR.BA",
-    "EDN": "EDN.BA"
+    "PAMP": "PAMP.BA"
 }
 
 @st.cache_data(ttl=60)
@@ -41,55 +39,46 @@ def obtener_pizarra():
         try:
             asset = yf.Ticker(ticker)
             info = asset.fast_info
+            actual = info['last_price']
+            cierre = info['regular_market_previous_close']
+            var_pct = ((actual / cierre) - 1) * 100
             
-            precio_actual = info['last_price']
-            precio_cierre = info['regular_market_previous_close']
-            variacion = ((precio_actual / precio_cierre) - 1) * 100
-            
-            # Definir flecha y color
-            icono = "🔺" if variacion >= 0 else "🔻"
+            # Lógica de color y flecha
+            color = "green" if var_pct >= 0 else "red"
+            flecha = "▲" if var_pct >= 0 else "▼"
             
             resultados.append({
                 "Especie": nombre,
-                "Precio": round(precio_actual, 2),
-                "Variación": f"{icono} {variacion:.2f}%",
-                "Cierre Ayer": round(precio_cierre, 2)
+                "Precio": f"$ {actual:,.2f}",
+                "Variación": f"{var_pct:.2f}%",
+                "Tendencia": f"{flecha}",
+                "Color": color
             })
-        except:
-            continue
-    return pd.DataFrame(resultados)
+        except: continue
+    return resultados
 
-# --- INTERFAZ DE USUARIO ---
-st.subheader("📈 Pizarra de Cotizaciones")
+# --- RENDERIZADO DE PIZARRA ---
+st.subheader("📈 Monitor de Mercado")
 
-if st.button("🔄 Actualizar Mercado"):
-    with st.spinner("Sincronizando precios..."):
-        df = obtener_pizarra()
-        
-        if not df.empty:
-            # Mostramos la tabla principal
-            st.table(df)
-            
-            # --- SISTEMA DE ALERTAS RÁPIDAS ---
+if st.button("🔄 Actualizar Cotizaciones"):
+    datos = obtener_pizarra()
+    if datos:
+        for d in datos:
+            # Creamos una fila visual con columnas
+            c1, c2, c3, c4 = st.columns([2, 3, 2, 1])
+            with c1: st.write(f"**{d['Especie']}**")
+            with c2: st.write(f"{d['Precio']}")
+            with c3: 
+                # Aplicamos color según la variación
+                clase = "val-pos" if d['Color'] == "green" else "val-neg"
+                st.markdown(f'<span class="{clase}">{d["Variación"]}</span>', unsafe_allow_html=True)
+            with c4:
+                st.markdown(f'<span class="{clase}">{d["Tendencia"]}</span>', unsafe_allow_html=True)
             st.divider()
-            st.subheader("🔔 Estado de Alertas")
-            
-            # Ejemplo de lógica para alertas automáticas
-            for index, row in df.iterrows():
-                if row['Especie'] == "GGAL" and row['Precio'] > 7300:
-                    st.warning(f"🚨 GGAL superó los $7300 (Actual: ${row['Precio']})")
-                if row['Especie'] == "YPFD" and row['Precio'] < 54000:
-                    st.error(f"🚨 YPFD cayó por debajo de $54000 (Actual: ${row['Precio']})")
-        else:
-            st.error("No se pudieron obtener los datos. Verificá la conexión.")
+    else:
+        st.error("No se pudo conectar con Yahoo Finance.")
 
-# --- SECCIÓN MANUAL ---
-with st.expander("📝 Notas de Estrategia"):
-    st.write("""
-    1. Revisar los precios aquí (coinciden con la App de Yahoo).
-    2. Si el precio toca tu objetivo, entrar a IOL manualmente.
-    3. Esperar respuesta de IOL por la API v2.
-    """)
-
-st.sidebar.info("Bot configurado para modo: Alerta Intradiaria Manual.")
-                
+# --- ALERTAS RÁPIDAS ---
+with st.expander("🔔 Configurar Alertas Rápidas"):
+    st.info("Próximamente: Notificaciones push cuando GGAL toque valores clave.")
+    
