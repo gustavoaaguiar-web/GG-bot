@@ -1,84 +1,51 @@
 import streamlit as st
-import yfinance as yf
+import requests
 import pandas as pd
 
-st.set_page_config(page_title="GG-bot | Control", page_icon="🦅", layout="centered")
+st.set_page_config(page_title="GG-bot | API v2", page_icon="🦅")
 
-# --- ESTILOS PARA EL SALDO Y COLORES ---
-st.markdown("""
-    <style>
-    .saldo-box {
-        background-color: #1E1E1E;
-        padding: 20px;
-        border-radius: 10px;
-        border-left: 5px solid #FFD700;
-        margin-bottom: 20px;
-    }
-    .val-pos { color: #00FF00; font-weight: bold; }
-    .val-neg { color: #FF4B4B; font-weight: bold; }
-    </style>
-    """, unsafe_allow_html=True)
+# --- CREDENCIALES (Usa las mismas que tenés en Secrets) ---
+USER = st.secrets["IOL_USER"]
+PASS = st.secrets["IOL_PASS"]
 
-# --- SECCIÓN DE SALDO ---
-st.markdown('<div class="saldo-box"><h3 style="margin:0; color:white;">💰 Saldo Disponible IOL</h3><h1 style="margin:0; color:#FFD700;">ARS 76.71</h1></div>', unsafe_allow_html=True)
-st.caption("⚠️ API IOL en mantenimiento. Mostrando último saldo conocido.")
+def get_token_v2():
+    url = "https://api.invertironline.com/token"
+    # La v2 usa el mismo sistema de token, pero los endpoints cambian
+    payload = f"username={USER}&password={PASS}&grant_type=password"
+    headers = {'Content-Type': 'application/x-www-form-urlencoded'}
+    r = requests.post(url, data=payload, headers=headers)
+    if r.status_code == 200:
+        return r.json().get("access_token")
+    return None
 
-st.divider()
+st.title("🦅 GG-bot | Conexión API v2")
 
-# --- LÓGICA DE PRECIOS (FILTRADA) ---
-TICKERS = {
-    "GGAL": "GGAL.BA",
-    "YPFD": "YPFD.BA",
-    "PAMP": "PAMP.BA"
-}
+tk = get_token_v2()
 
-@st.cache_data(ttl=60)
-def obtener_pizarra():
-    resultados = []
-    for nombre, ticker in TICKERS.items():
-        try:
-            asset = yf.Ticker(ticker)
-            info = asset.fast_info
-            actual = info['last_price']
-            cierre = info['regular_market_previous_close']
-            var_pct = ((actual / cierre) - 1) * 100
-            
-            # Lógica de color y flecha
-            color = "green" if var_pct >= 0 else "red"
-            flecha = "▲" if var_pct >= 0 else "▼"
-            
-            resultados.append({
-                "Especie": nombre,
-                "Precio": f"$ {actual:,.2f}",
-                "Variación": f"{var_pct:.2f}%",
-                "Tendencia": f"{flecha}",
-                "Color": color
-            })
-        except: continue
-    return resultados
-
-# --- RENDERIZADO DE PIZARRA ---
-st.subheader("📈 Monitor de Mercado")
-
-if st.button("🔄 Actualizar Cotizaciones"):
-    datos = obtener_pizarra()
-    if datos:
-        for d in datos:
-            # Creamos una fila visual con columnas
-            c1, c2, c3, c4 = st.columns([2, 3, 2, 1])
-            with c1: st.write(f"**{d['Especie']}**")
-            with c2: st.write(f"{d['Precio']}")
-            with c3: 
-                # Aplicamos color según la variación
-                clase = "val-pos" if d['Color'] == "green" else "val-neg"
-                st.markdown(f'<span class="{clase}">{d["Variación"]}</span>', unsafe_allow_html=True)
-            with c4:
-                st.markdown(f'<span class="{clase}">{d["Tendencia"]}</span>', unsafe_allow_html=True)
-            st.divider()
-    else:
-        st.error("No se pudo conectar con Yahoo Finance.")
-
-# --- ALERTAS RÁPIDAS ---
-with st.expander("🔔 Configurar Alertas Rápidas"):
-    st.info("Próximamente: Notificaciones push cuando GGAL toque valores clave.")
+if tk:
+    st.success("✅ ¡Conectado a la API v2 con éxito!")
+    headers = {"Authorization": f"Bearer {tk}"}
     
+    # Probamos el endpoint de Portafolio (que en la v1 te daba Error 500)
+    # En v2 debería funcionar
+    url_portafolio = "https://api.invertironline.com/api/v2/portafolio/argentina"
+    
+    try:
+        res = requests.get(url_portafolio, headers=headers)
+        if res.status_code == 200:
+            st.subheader("💰 Tu Portafolio Real (v2)")
+            data = res.json()
+            # Si tenés activos, los mostramos
+            if data.get('activos'):
+                df = pd.DataFrame(data['activos'])
+                st.dataframe(df[['simbolo', 'cantidad', 'ultimoPrecio', 'variacionDiaria']])
+            else:
+                st.info("No tenés activos actualmente, pero la conexión es EXITOSA.")
+                st.metric("Saldo Líquido", f"$ {data.get('saldoTotal', '0.00')}")
+        else:
+            st.error(f"Error en v2: {res.status_code}")
+            st.write("Si sale error aquí, sacamos captura para Macarena.")
+    except Exception as e:
+        st.error(f"Error de red: {e}")
+else:
+    st.error("❌ No se pudo obtener el Token. Revisá tus credenciales en Secrets.")
